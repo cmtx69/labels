@@ -589,8 +589,10 @@ if (!PO || !Array.isArray(PO.items)){
     <div class="err"><b>This link has no order in it.</b> Please open the full link from the purchase order PDF, or the label file attached to the PDF.<br><span class="zh">此链接中没有订单信息。请打开采购订单 PDF 中的完整链接，或 PDF 附件中的标签文件。</span></div>`;
 } else {
   const S = {type: ['bar', 'pack', 'both'].includes(PO.lt) ? PO.lt : 'pack', size: SIZES.some(x => x[0] === PO.ls) ? PO.ls : 'th50', spare: String(PO.sp || '0')};
-  const items = PO.items.map(x => ({p: {sku: x.s, name: x.n, title: x.t || x.n, color: x.c, bc: x.bc, pd: x.pd || {}}, packs: +x.q || 0, type: null, size: null, qty: '', off: false}));
-  const typeOf = it => it.type || S.type, sizeOf = it => it.size || S.size;
+  // fp = full pack label allowed (bags only); other products have the barcode printed on their packaging -> barcode label only
+  const items = PO.items.map(x => ({p: {sku: x.s, name: x.n, title: x.t || x.n, color: x.c, bc: x.bc, pd: x.pd || {}}, fp: x.fp !== 0, packs: +x.q || 0, type: null, size: null, qty: '', off: false}));
+  const anyFp = items.some(it => it.fp && bcOf(it.p));
+  const typeOf = it => it.fp ? (it.type || S.type) : 'bar', sizeOf = it => it.size || S.size;
   const qtyOf = it => it.qty !== '' ? Math.max(0, parseInt(it.qty) || 0) : Math.ceil(it.packs * (100 + (+S.spare || 0)) / 100);
   const jobs = it => { const t = typeOf(it), q = qtyOf(it), o = []; if (!bcOf(it.p)) return o;
     if (t !== 'pack') o.push({p: it.p, fmt: sizeOf(it), qty: q}); if (t !== 'bar') o.push({p: it.p, fmt: 'pack46', qty: q}); return o; };
@@ -611,7 +613,7 @@ if (!PO || !Array.isArray(PO.items)){
           <div class="code">${b ? esc(b.code) : 'No barcode / 无条码'}</div>
           <div class="ps">Packs ordered / 订购包数: <b>${fmtN(it.packs)}</b></div></div>
         <div class="row">
-          <label>Label / 标签<select data-k="type"${b ? '' : ' disabled'}>${opt(TYPES, t)}</select></label>
+          <label>Label / 标签${it.fp ? `<select data-k="type"${b ? '' : ' disabled'}>${opt(TYPES, t)}</select>` : `<select disabled>${opt(TYPES.slice(0, 1), 'bar')}</select>`}</label>
           <label>Barcode label size / 条码标签尺寸<select data-k="size"${b && t !== 'pack' ? '' : ' disabled'}>${opt(SIZES, sizeOf(it))}</select></label>
           <label>Labels / 标签数量<input type="number" min="0" step="1" data-k="qty" value="${esc(it.qty)}" placeholder="${qtyOf(Object.assign({}, it, {qty: ''}))}"${b ? '' : ' disabled'}></label>
           <div class="pg" data-pg>${pagesTxt(it)}</div>
@@ -628,11 +630,11 @@ if (!PO || !Array.isArray(PO.items)){
     <div class="hdr"><div class="brand">CAMTOMS</div><div class="htxt"><h1>Labels for purchase order ${esc(PO.po)} <span class="zh">采购订单标签</span></h1>
       <div class="meta">PO date / 订单日期: ${esc(PO.date || '')}${PO.sup ? ' · ' + esc(PO.sup) : ''}</div></div></div>
     <div class="box"><ol class="steps">
-      <li><b>Choose the label and size for each product.</b> <span class="zh">为每个产品选择标签类型和尺寸。</span><br><span class="note">Barcode label = small sticker with the Amazon barcode, put one on every pack, covering any other barcode. Full pack label = 4 × 6 in label with the product details and the barcode. <span class="zh">条码标签 = 带亚马逊条码的小标签，每包贴一张，盖住其他条码。整包标签 = 4×6 英寸，含产品信息和条码。</span></span></li>
+      <li><b>Choose the label and size for each product.</b> <span class="zh">为每个产品选择标签类型和尺寸。</span><br><span class="note">Barcode label = small sticker with the Amazon barcode, put one on every pack, covering any other barcode. Full pack label = 4 × 6 in label with the product details and the barcode (bags only). <span class="zh">条码标签 = 带亚马逊条码的小标签，每包贴一张，盖住其他条码。整包标签 = 4×6 英寸，含产品信息和条码（仅限袋子）。</span></span></li>
       <li><b>Check how many labels.</b> It starts at the number of packs ordered. <span class="zh">确认标签数量（默认 = 订购包数）。</span></li>
       <li><b>Download and print at 100% / actual size - do not scale or "fit to page".</b> <span class="zh">下载后按 100% 实际尺寸打印，不要缩放或"适合页面"。</span></li></ol></div>
     <div class="box ctl">
-      <label>Label for all / 全部标签<select id="gType">${opt(TYPES, S.type)}</select></label>
+      ${anyFp ? `<label>Label for all bags / 所有袋子的标签<select id="gType">${opt(TYPES, S.type)}</select></label>` : ''}
       <label>Barcode label size for all / 全部条码尺寸<select id="gSize">${opt(SIZES, S.size)}</select></label>
       <label>Spare labels / 备用标签<select id="gSpare"><option value="0">none / 无</option><option value="2">+2%</option><option value="5">+5%</option><option value="10">+10%</option></select></label>
     </div>
@@ -641,7 +643,7 @@ if (!PO || !Array.isArray(PO.items)){
       <div class="btns"><button id="allOne" class="pri">Download all / 全部下载</button><button id="allEach">One file per product / 每个产品一个文件</button></div></div>
     <p class="note">One file per label size, so each goes to the right printer. Labels are vector PDF - sharp at any size. <span class="zh">每种尺寸一个文件。标签为矢量 PDF，任何尺寸都清晰。</span></p>`;
   $('gSpare').value = S.spare;
-  $('gType').addEventListener('change', e => { S.type = e.target.value; items.forEach(it => { it.type = null; }); render(); });
+  if (anyFp) $('gType').addEventListener('change', e => { S.type = e.target.value; items.forEach(it => { it.type = null; }); render(); });
   $('gSize').addEventListener('change', e => { S.size = e.target.value; items.forEach(it => { it.size = null; }); render(); });
   $('gSpare').addEventListener('change', e => { S.spare = e.target.value; render(); });
   $('items').addEventListener('change', e => { const k = e.target.dataset.k; if (!k) return; const it = items[+e.target.closest('.it').dataset.i];
